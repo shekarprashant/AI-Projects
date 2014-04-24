@@ -1,0 +1,8 @@
+java SatSolverRandomInstance 1 50 16 2 0.5 100 0.0 0.02 0.2 0.02
+java SatSolverRandomInstance 2 100 16 2 0.5 1000 0.05 0.02 0.2 0.02
+java SatSolverRandomInstance 3 20 16 2 0.5 1000 0.02 0.02
+java SatSolverRandomInstance 3 20 24 3 0.5 1000 0.02 0.02
+java SatSolverRandomInstance 3 20 32 4 0.5 1000 0.02 0.02
+java SatSolverRandomInstance 3 20 40 5 0.5 1000 0.02 0.02
+java SatSolverRandomInstance 3 20 48 6 0.5 1000 0.02 0.02
+

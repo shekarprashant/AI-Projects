@@ -1,0 +1,521 @@
+import java.io.BufferedReader;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+class Literal{
+    public int chemical;
+    public int container;
+    public boolean value;    
+    
+    Literal (int chemical, int container, boolean value){
+        this.chemical = chemical;
+        this.container = container;
+        this.value = value;
+    }
+    
+  
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == null) {
+            return false;
+        }
+        if (getClass() != obj.getClass()) {
+            return false;
+        }
+        final Literal other = (Literal) obj;
+        if (this.chemical != other.chemical) {
+            return false;
+        }
+        return this.container == other.container;
+    }
+
+    @Override
+    public int hashCode() {
+        int hash = 7;
+        hash = 89 * hash + this.chemical;
+        hash = 89 * hash + this.container;
+        return hash;
+    }
+}
+
+class ClauseLiteral{
+    public Literal literal;
+    public boolean isNegated;
+    
+    ClauseLiteral (Literal literal, boolean isNegated){
+        this.literal = literal;
+        this.isNegated = isNegated;
+    }
+    
+
+    public boolean isNegation(ClauseLiteral other){
+        return this.literal.equals(other.literal) && this.isNegated != other.isNegated;
+    }
+    
+    public ClauseLiteral getNegation(){
+        ClauseLiteral Negation = new ClauseLiteral(this.literal, !this.isNegated);
+        return Negation;        
+    }
+    
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == null) {
+            return false;
+        }
+        if (getClass() != obj.getClass()) {
+            return false;
+        }
+        final ClauseLiteral other = (ClauseLiteral) obj;
+        if (!Objects.equals(this.literal, other.literal)) {
+            return false;
+        }
+        return this.isNegated == other.isNegated;
+    }
+
+    @Override
+    public int hashCode() {
+        int hash = 5;
+        hash = 67 * hash + Objects.hashCode(this.literal);
+        hash = 67 * hash + (this.isNegated ? 1 : 0);
+        return hash;
+    }
+    
+}
+
+class CNFClause{
+    public List<ClauseLiteral> Literals;
+    
+    CNFClause(){
+        Literals = new ArrayList();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == null) {
+            return false;
+        }
+        if (getClass() != obj.getClass()) {
+            return false;
+        }
+        final CNFClause other = (CNFClause) obj;
+        return Objects.equals(this.Literals, other.Literals);
+    }
+
+    @Override
+    public int hashCode() {
+        int hash = 7;
+        hash = 83 * hash + Objects.hashCode(this.Literals);
+        return hash;
+    }
+}
+
+
+class ConstraintSolver{
+    public int num_chemicals;
+    public int num_containers;
+    public Map<ClauseLiteral, List<Integer>> LiteralMap;
+    public List<CNFClause> KB;
+    public ClauseLiteral PositiveLiterals[][];
+    public ClauseLiteral NegatedLiterals[][];
+    
+    
+    ConstraintSolver(int num_chemicals, int num_containers){
+        this.num_chemicals = num_chemicals;
+        this.num_containers = num_containers;
+        PositiveLiterals = new ClauseLiteral[num_chemicals][num_containers];
+        NegatedLiterals = new ClauseLiteral[num_chemicals][num_containers];
+        Literal literal;
+        for (int i = 0; i < num_chemicals; i++){            
+            for (int j = 0; j < num_containers; j++){
+                literal = new Literal(i, j, false);
+                PositiveLiterals[i][j] = new ClauseLiteral(literal, true);
+                NegatedLiterals[i][j] = new ClauseLiteral(literal, false);
+            }
+        }
+        LiteralMap = new HashMap<>();
+        KB = new ArrayList<>();
+    }
+    
+    boolean CNFClauseExists(CNFClause clause){
+        
+        ClauseLiteral literal = clause.Literals.get(0);
+        List<Integer> ClauseIndexes = LiteralMap.get(literal);
+        
+        if (ClauseIndexes == null)
+            return false;
+        for (int clauseindex : ClauseIndexes){
+            if(Objects.equals(KB.get(clauseindex), clause))
+                return true;
+        }
+        return false;
+    }
+    
+    void addCNFClause(CNFClause clause){
+        List<Integer> Clauses;
+        
+        KB.add(clause);
+        for (ClauseLiteral literal : clause.Literals) {
+            Clauses = LiteralMap.get(literal);
+            if (Clauses == null)
+            {
+                Clauses = new ArrayList();
+                LiteralMap.put(literal, Clauses);
+            }
+            Clauses.add(KB.size() - 1);
+        }            
+        
+    }
+    
+    void addExactlyOneConstraint(){
+        
+        CNFClause AtLeastOneClause, AtMostOneClause;
+        for (int i = 0; i < num_chemicals; i++){                        
+            AtMostOneClause = new CNFClause();
+            for (int j = 0; j < num_containers; j++){
+
+                AtMostOneClause.Literals.add(PositiveLiterals[i][j]);                
+                
+                for (int k = j + 1; k < num_containers; k++){
+                    AtLeastOneClause = new CNFClause();
+                    AtLeastOneClause.Literals.add(NegatedLiterals[i][j]);
+                    AtLeastOneClause.Literals.add(NegatedLiterals[i][k]);
+                    
+                    if (!CNFClauseExists(AtLeastOneClause))
+                        addCNFClause(AtLeastOneClause);
+                }
+            }
+            if (!CNFClauseExists(AtMostOneClause))
+                addCNFClause(AtMostOneClause);
+        }            
+        
+    }
+    
+    void addSeparateConstraint(int chemical1, int chemical2){
+        CNFClause SeparateClause;
+        for (int i = 0; i < num_containers; i++){
+            SeparateClause = new CNFClause();
+            for (int j = 0; j < num_containers; j++){
+                if (i != j){
+                    SeparateClause.Literals.add(PositiveLiterals[chemical1][j]);
+                    SeparateClause.Literals.add(PositiveLiterals[chemical2][j]);
+                }
+                else{
+                    SeparateClause.Literals.add(NegatedLiterals[chemical1][i]);
+                    SeparateClause.Literals.add(NegatedLiterals[chemical2][i]);                    
+                }
+            }
+            if (!CNFClauseExists(SeparateClause))
+                addCNFClause(SeparateClause);
+        }        
+    }
+    
+    void addTogetherConstraint(int chemical1, int chemical2){
+        CNFClause TogetherClause;
+        for (int j = 0; j < num_containers; j++){
+            TogetherClause = new CNFClause();
+            TogetherClause.Literals.add(NegatedLiterals[chemical1][j]);
+            TogetherClause.Literals.add(PositiveLiterals[chemical2][j]);
+            
+            if (!CNFClauseExists(TogetherClause))
+                addCNFClause(TogetherClause);
+            
+            TogetherClause = new CNFClause();
+            TogetherClause.Literals.add(PositiveLiterals[chemical1][j]);
+            TogetherClause.Literals.add(NegatedLiterals[chemical2][j]);
+            
+            if (!CNFClauseExists(TogetherClause))
+                addCNFClause(TogetherClause);
+        }
+    }
+    
+    List<CNFClause> PLResolve(CNFClause C1, CNFClause C2){
+        return null;
+    }
+    boolean PLSatisfiability(Set<CNFClause> KB1){
+        Set<CNFClause> Resolvents;
+        Set<CNFClause> New = new HashSet<>();
+        while (true){
+            Iterator iterator1 = KB1.iterator(); 
+            while(iterator1.hasNext()){
+                Iterator iterator2 = KB1.iterator(); 
+                while(iterator2.hasNext()){    
+                    Resolvents = PLResolve((CNFClause)iterator1.next(), (CNFClause)iterator2.next());
+                    if (Resolvents == null)
+                        return false;
+                    New.addAll(Resolvents);
+                    
+                    if (KB.containsAll(New))
+                        return true;
+                    
+                    KB.addAll(New);
+                        
+                }
+            }
+        }
+
+        return true;
+    }
+    
+    /*boolean PLSatisfiability(){
+        List<Integer> PositiveClauseIndexes, NegatedClauseIndexes; 
+        CNFClause NewClause;
+        int positiveIndex, negatedIndex;
+        boolean unchanged = false;
+        
+        while (!unchanged){
+            unchanged = true;
+            for (int i = 0; i < num_chemicals; i++){         
+                for (int j = 0; j < num_containers; j++){
+                    PositiveClauseIndexes = LiteralMap.get(PositiveLiterals[i][j]);
+                    NegatedClauseIndexes = LiteralMap.get(NegatedLiterals[i][j]);
+
+                    if (PositiveClauseIndexes == null || NegatedClauseIndexes == null)
+                        continue;
+                    
+                    for (int k = 0; k < PositiveClauseIndexes.size(); k++){
+                        for (int l = 0; l < NegatedClauseIndexes.size(); l++){
+                            positiveIndex = PositiveClauseIndexes.get(k);
+                            negatedIndex = NegatedClauseIndexes.get(l);                        
+
+                            if (positiveIndex != negatedIndex){
+                                NewClause = new CNFClause();
+                                
+                                for(ClauseLiteral lit : KB.get(positiveIndex).Literals){
+                                    if (!lit.equals(PositiveLiterals[i][j])){
+                                        
+                                        if (NewClause.Literals.contains(lit.getNegation())){
+                                            NewClause = null;
+                                            break;
+                                        }
+                                        NewClause.Literals.add(lit);
+                                    }
+                                }
+                                
+                                if (NewClause == null)
+                                    continue;
+                                
+                                for(ClauseLiteral lit : KB.get(negatedIndex).Literals){
+                                    if (!lit.equals(NegatedLiterals[i][j])){
+                                        if (NewClause.Literals.contains(lit.getNegation())){
+                                            NewClause = null;
+                                            break;
+                                        }
+                                        
+                                        if ( !NewClause.Literals.contains(lit))
+                                            NewClause.Literals.add(lit);
+                                    }
+                                }
+                                if (NewClause == null)
+                                    continue;
+                                
+                                if(NewClause.Literals.isEmpty())
+                                    return false;
+                                
+                                if (!CNFClauseExists(NewClause)){
+                                    addCNFClause(NewClause);
+                                    unchanged = false;
+                                    
+                                    int LiteralCount = 0;
+                                    System.out.println();
+                                    for (ClauseLiteral clauseliteral : NewClause.Literals){
+                                        if(!clauseliteral.isNegated)
+                                            System.out.print("~");
+
+                                        Literal literal = clauseliteral.literal;
+
+                                        if(LiteralCount != NewClause.Literals.size() - 1)
+                                            System.out.print("X" + literal.chemical + "," + literal.container + " V ");
+                                        else
+                                            System.out.print("X" + literal.chemical + "," + literal.container);
+                                        LiteralCount++;
+                                       }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+        }
+        
+      
+      return true;
+    }
+   boolean PLSatisfiability(){
+        
+        ArrayList<ClauseLiteral> clause1, clause2;
+        int chemical1, container1, chemical2, container2;
+        for (int i = 0; i < KB.size(); i++){
+            clause1 = KB.get(i).ClauseLiterals();
+            for (int j = i; j < KB.size(); j++){                
+                clause2 = KB.get(j).ClauseLiterals();
+                for (int k = 0, l = 0; k < clause1.size() && l < clause2.size();){
+                    chemical1 = clause1.get(k).Literal().Chemical();
+                    container1 = clause1.get(k).Literal().Container();
+                    chemical2 = clause1.get(k).Literal().Chemical();
+                    container2 = clause1.get(k).Literal().Container();
+                    if (chemical)
+                        
+                }
+            }    
+        }
+        return true;
+    }*/
+    
+}
+
+class FileIO{
+    String FilePath;
+    
+    FileIO(String p){
+        FilePath = p;
+    }
+    
+    ConstraintSolver readTextFile() {
+        ConstraintSolver SATSolver = null;
+        int row = 0, num_chemicals = 0, num_containers, value;
+        try(FileReader inputFile = new FileReader(FilePath);
+            BufferedReader bufRead = new BufferedReader(inputFile);){
+            
+            String fileLine;
+            while ( (fileLine = bufRead.readLine()) != null)
+            {    
+                
+                String[] numbers = fileLine.split(" ");                
+                if (row == 0)
+                {    
+                    if (numbers.length < 2)
+                        return null;
+                    num_chemicals = Integer.parseInt(numbers[0]);
+                    num_containers = Integer.parseInt(numbers[1]);
+                    SATSolver = new ConstraintSolver(num_chemicals, num_containers);
+                    SATSolver.addExactlyOneConstraint();
+                }
+                else {
+                    for (int i = row; i < num_chemicals && i < numbers.length; i++) {
+                        
+                        if(SATSolver == null)
+                            return null;
+                        
+                        value = Integer.parseInt(numbers[i]);  
+                        if(value == 1)
+                            SATSolver.addTogetherConstraint(row - 1, i);
+                        else if (value == -1)
+                            SATSolver.addSeparateConstraint(row - 1, i);                        
+                    }                    
+                }
+                row++;
+            }
+            return SATSolver;
+        }
+        catch(IOException | NumberFormatException e){
+            return null;
+        }   
+  }
+  
+    boolean writeMessageToFile(String s){
+
+        try (PrintWriter writer = new PrintWriter(FilePath, "UTF-8")) {          
+            writer.println(s);
+            return true;
+        }
+      
+      
+        catch(FileNotFoundException | UnsupportedEncodingException e){
+            return false;
+      }      
+  }
+  
+    /*boolean writeSudokuToFile(SudokuGrid sudoku){
+      
+      if (sudoku == null)
+          return false;
+      
+      try (PrintWriter writer = new PrintWriter(FilePath, "UTF-8")) {
+          
+            for (int row = 0; row < sudoku.size; row++){
+                for (int col = 0; col < sudoku.size; col++)
+                    if (col == sudoku.size-1)
+                        writer.print((sudoku.cells[row][col].set_value + 1));
+                    else
+                        writer.print((sudoku.cells[row][col].set_value + 1) + " ");
+            
+                if (row != sudoku.size-1)
+                    writer.println("");
+             }
+      }
+      
+      catch(FileNotFoundException | UnsupportedEncodingException e){
+          return false;
+      }
+      return true;
+  }*/
+  
+    void printKB(ConstraintSolver ConstraintSolver1){
+            List<CNFClause> KB =  ConstraintSolver1.KB;
+            List<ClauseLiteral> Literals;
+            Literal literal;
+            int ClauseCount = 0, LiteralCount;
+            for (CNFClause Clause : KB){
+                Literals = Clause.Literals;
+                System.out.print(ClauseCount + ") ");
+                LiteralCount = 0;
+                for (ClauseLiteral clauseliteral : Literals){
+                    if(!clauseliteral.isNegated)
+                        System.out.print("~");
+                    
+                    literal = clauseliteral.literal;
+                    
+                    if(LiteralCount != Literals.size() - 1)
+                        System.out.print("X" + literal.chemical + "," + literal.container + " V ");
+                    else
+                        System.out.print("X" + literal.chemical + "," + literal.container);
+                    LiteralCount++;
+                }
+                ClauseCount++;
+                System.out.println();    
+                    
+            }    
+    }
+}
+            
+public class SATSolver {
+
+    public static void main( String[] args) {
+        if (args.length != 4)
+        {
+            System.out.println("Incorrect command.\nUsage:java SATSolver <input_file> <output_file> <p> <max_flips>");
+            return;
+        }
+        
+        
+        
+        FileIO IOHandle = new FileIO(args[0]);
+        ConstraintSolver ConstraintSolver1 = IOHandle.readTextFile();
+        if (ConstraintSolver1 == null){
+            System.out.println("The Satisfiablity problem cannot be solved with the given values");
+            return;
+        }
+        IOHandle.printKB(ConstraintSolver1);
+        
+        if (!ConstraintSolver1.PLSatisfiability())
+            System.out.println("The Satisfiablity problem cannot be solved with the given values");
+        else
+            System.out.println("The Satisfiablity problem can be solved with the given values");
+        
+        IOHandle.printKB(ConstraintSolver1);
+    }
+    
+}
